@@ -177,8 +177,8 @@ function resize(){
     }
 
     // Set internal rendering resolution
-    gl.canvas.width = targetWidth;
-    gl.canvas.height = targetHeight;
+    gl.canvas.width = maxRenderDimension;
+    gl.canvas.height = maxRenderDimension;
 
     console.log(`Resized canvas to: ${gl.canvas.width}x${gl.canvas.height}`);
 
@@ -186,7 +186,7 @@ function resize(){
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
     // Pass the rendering buffer's aspect ratio to the shader
-    gl.uniform1f(loc.aspect, gl.canvas.width / gl.canvas.height);
+    gl.uniform1f(loc.aspect, windowWidth / windowHeight);
 
     // The canvas CSS (width: 100%; height: 100%;) makes it fill the display area.
     // Since the rendering buffer now has the same aspect ratio as the window,
