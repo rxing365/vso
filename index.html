@@ -186,26 +186,62 @@ function resize(){
 window.addEventListener('resize',resize);resize(); // Initial call
 
 // ------------------- micro-task based tick loop ---------------------------
-let frameCnt=0,lastFpsTime=performance.now();let lastTime=performance.now();
+let lastFpsUpdateTime = performance.now();
+let lastTime = performance.now(); // Initialize lastTime here
+let vsyncFrameCount = 0; // Frame counter for both modes
+
 const {port1,port2}=new MessageChannel();
 
 // Conditional scheduling based on useVSync
 port1.onmessage = () => { if (!useVSync) render(); };
 
-function render(){const now=performance.now();const dt=now-lastTime;lastTime=now;if(!dragging){yaw+=AUTO_SPEED*dt;}updateCamera();gl.drawArrays(gl.TRIANGLES,0,6);frameCnt++;if(now-lastFpsTime>=1000){fpsElem.textContent=(frameCnt*1000/(now-lastFpsTime)).toFixed(1)+' FPS';frameCnt=0;lastFpsTime=now;}
-// Schedule next frame based on useVSync
-if (useVSync) {
-    window.requestAnimationFrame(render);
-} else {
-    port2.postMessage(0);
+function render(){
+    // const frameStartTime = performance.now(); // Removed
+
+    // Increment frame counter (counts render calls in both modes)
+    vsyncFrameCount++;
+
+    const now=performance.now(); // Current time
+    const dt=now-lastTime; // Calculate delta time
+    lastTime=now; // Update lastTime for the next frame
+    
+    if(!dragging){yaw += AUTO_SPEED * dt;}
+    updateCamera();
+    gl.drawArrays(gl.TRIANGLES,0,6); // Submit drawing command
+
+    gl.finish(); // Wait for GPU to finish
+
+    // const frameEndTime = performance.now(); // Removed
+    // const frameDuration = frameEndTime - frameStartTime; // Removed
+
+    // totalFrameTime += frameDuration; // Removed
+    // completedFrames++; // Removed
+
+    // Update FPS display approximately every second
+    const currentTime = performance.now();
+    if(currentTime - lastFpsUpdateTime >= 1000){
+        // FPS is the number of render calls per second in both modes
+        const fps = vsyncFrameCount * 1000 / (currentTime - lastFpsUpdateTime);
+        fpsElem.textContent=fps.toFixed(1)+' FPS';
+
+        // Reset counter for the next second
+        vsyncFrameCount = 0;
+        lastFpsUpdateTime = currentTime;
+    }
+
+    // Schedule next frame based on useVSync
+    if (useVSync) {
+        window.requestAnimationFrame(render);
+    } else {
+        setTimeout(render, 0); // Use setTimeout(0) for non-VSync
+    }
 }
-} // schedule next immediately
 
 // Initial kick-off based on useVSync
 if (useVSync) {
     window.requestAnimationFrame(render);
 } else {
-    port2.postMessage(0);
+    setTimeout(render, 0); // Use setTimeout(0) for initial kick-off
 }
 </script>
 </body>
