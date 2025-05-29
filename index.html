@@ -5,12 +5,17 @@
 <title>Mandelbulb</title>
 <style>
  html,body{margin:0;padding:0;height:100%;background:#111;overflow:hidden;font-family:monospace;}
- canvas{display:block;width:100%;height:100%;}
+ canvas{display:block; width: 100%; height: 100%; touch-action: none; }
  #fps{position:fixed;left:0;top:0;color:#0f0;background:rgba(0,0,0,.4);padding:4px 6px;font-size:12px;pointer-events:none;user-select:none;}
+ #vsync-select { position: fixed; right: 10px; top: 10px; z-index: 100; }
 </style>
 </head>
 <body>
 <canvas id="glcanvas"></canvas><div id="fps">0 FPS</div>
+<select id="vsync-select">
+    <option value="true">VSync Enabled</option>
+    <option value="false">VSync Disabled</option>
+</select>
 <script type="module">
 alert("!!This web page may cause your device to freeze. Please ensure you do not have any work files open!!\n\nOptimized test code, with added frame rate statistics and unlimited rendering frame rate for better CPU and GPU performance testing.\nOptimized based on cznull@bilibili's code, by 迷湖浅浅@bilibili");
 // ----------------------------------------------------------- context & FPS
@@ -30,7 +35,7 @@ precision highp float;
 #define SURF_EPS   0.001
 #define ESCAPE     8.0
 in vec2 vUV;out vec4 frag;uniform vec3 camPos,camRight,camUp,camForward;uniform float aspect;
-float mandelbulbDE(in vec3 p){vec3 z=p;float dr=1.0;float r=0.0;const int ITER=12;for(int i=0;i<ITER;i++){r=length(z);if(r>ESCAPE)break;float th=acos(z.z/r),ph=atan(z.y,z.x);float r8=pow(r,8.0);dr=pow(r,7.0)*8.0*dr+1.0;th*=8.0;ph*=8.0;z=r8*vec3(sin(th)*cos(ph),sin(th)*sin(ph),cos(th))+p;}return 0.5*log(r)*r/dr;}
+float mandelbulbDE(in vec3 p){vec3 z=p;float dr=1.0;float r=0.0;const int ITER=8;for(int i=0;i<ITER;i++){r=length(z);if(r>ESCAPE)break;float th=acos(z.z/r),ph=atan(z.y,z.x);float r8=pow(r,8.0);dr=pow(r,7.0)*8.0*dr+1.0;th*=8.0;ph*=8.0;z=r8*vec3(sin(th)*cos(ph),sin(th)*sin(ph),cos(th))+p;}return 0.5*log(r)*r/dr;}
 vec3 calcNormal(vec3 p){const vec3 e=vec3(1e-4,0,0);return normalize(vec3(mandelbulbDE(p+e.xyy)-mandelbulbDE(p-e.xyy),mandelbulbDE(p+e.yxy)-mandelbulbDE(p-e.yxy),mandelbulbDE(p+e.yyx)-mandelbulbDE(p-e.yyx)));}
 vec3 shade(vec3 p,vec3 rd,vec3 n){float r1=dot(p,p);vec3 base=vec3(sin(r1*10.0)*0.5+0.5,sin(r1*10.0+2.05)*0.5+0.5,sin(r1*10.0-2.05)*0.5+0.5);vec3 refl=reflect(rd,n);float r3=max(0.0,dot(refl,vec3(0.276,0.920,0.276)));float r4=dot(n,vec3(0.276,0.920,0.276));r3=pow(r3,4.0);float mixv=r3*0.45+r4*0.25+0.3;return base*mixv;}
 void main(){vec2 xy=(vUV*2.0-1.0)*vec2(aspect,1.0);vec3 rd=normalize(camForward+xy.x*camRight+xy.y*camUp);float t=0.0;float d;bool hit=false;vec3 p;for(int i=0;i<MAX_STEPS;i++){p=camPos+rd*t;d=mandelbulbDE(p);if(d<SURF_EPS){hit=true;break;}if(t>MAX_DIST)break;t+=d;}vec3 color=vec3(0.0);if(hit){vec3 n=calcNormal(p);if(dot(n,rd)<0.0)color=shade(p,rd,n);}frag=vec4(color,1.0);} `;
@@ -47,6 +52,25 @@ let dragging=false,lastX=0,lastY=0;const AUTO_SPEED=0.00025;
 let lasttimen = 0;
 let mx = 0, my = 0, mx1 = 0, my1 = 0;
 
+// VSync control: true for VSync (default), false for unlimited FPS
+let useVSync = true;
+
+// Get the select element and add event listener
+const vsyncSelect = document.getElementById('vsync-select');
+vsyncSelect.addEventListener('change', (event) => {
+    useVSync = event.target.value === 'true';
+    // Restart the rendering loop with the new VSync setting
+    if (useVSync) {
+        window.requestAnimationFrame(render);
+    } else {
+        // Clear any pending requestAnimationFrame if switching from VSync
+        // This might require storing the request ID from requestAnimationFrame
+        // For simplicity here, we'll just rely on the render function's logic
+        // to use port2.postMessage(0) when useVSync is false.
+        port2.postMessage(0);
+    }
+});
+
 window.addEventListener('mousedown',e=>{dragging=true;lastX=e.clientX;lastY=e.clientY});
 window.addEventListener('mouseup',()=>dragging=false);
 window.addEventListener('mousemove',e=>{if(!dragging)return;yaw+=0.005*(e.clientX-lastX);pitch+=0.005*(e.clientY-lastY);pitch=Math.max(-1.4,Math.min(1.4,pitch));lastX=e.clientX;lastY=e.clientY;});
@@ -56,6 +80,9 @@ window.addEventListener('wheel',e=>{dist*=Math.exp(0.001*e.deltaY);});
 document.addEventListener("touchstart",
     function (ev) {
         var n = ev.touches.length;
+        if (n >= 2) { // Check for two or more touches
+            ev.preventDefault(); // Prevent default browser zoom
+        }
         if (n == 1) {
             var oEvent = ev.touches[0];
             mx = oEvent.clientX;
@@ -119,14 +146,67 @@ document.addEventListener("touchmove",
     false);
 
 function updateCamera(){const cp=[dist*Math.cos(pitch)*Math.cos(yaw)+target[0],dist*Math.sin(pitch)+target[1],dist*Math.cos(pitch)*Math.sin(yaw)+target[2]];const f=[target[0]-cp[0],target[1]-cp[1],target[2]-cp[2]];const flen=Math.hypot(...f);for(let i=0;i<3;i++)f[i]/=flen;const upRef=[0,1,0];const right=[f[1]*upRef[2]-f[2]*upRef[1],f[2]*upRef[0]-f[0]*upRef[2],f[0]*upRef[1]-f[1]*upRef[0]];const rlen=Math.hypot(...right);for(let i=0;i<3;i++)right[i]/=rlen;const up=[right[1]*f[2]-right[2]*f[1],right[2]*f[0]-right[0]*f[2],right[0]*f[1]-right[1]*f[0]];gl.uniform3fv(loc.camPos,cp);gl.uniform3fv(loc.camRight,right);gl.uniform3fv(loc.camUp,up);gl.uniform3fv(loc.camForward,f);}
-function resize(){gl.canvas.width=window.innerWidth*devicePixelRatio;gl.canvas.height=window.innerHeight*devicePixelRatio;gl.viewport(0,0,gl.canvas.width,gl.canvas.height);gl.uniform1f(loc.aspect,gl.canvas.width/gl.canvas.height);}window.addEventListener('resize',resize);resize();
+function resize(){
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    const devicePixelRatio = window.devicePixelRatio || 1;
+
+    // Calculate target rendering size based on window size and pixel ratio
+    let targetWidth = windowWidth * devicePixelRatio;
+    let targetHeight = windowHeight * devicePixelRatio;
+
+    // Maintain aspect ratio and limit the longer side to 2048
+    const maxRenderDimension = 2048;
+    const windowAspect = windowWidth / windowHeight;
+
+    if (windowAspect > 1.0) { // Window is wider than tall
+        // Limit width to maxRenderDimension, scale height proportionally
+        targetWidth = Math.min(targetWidth, maxRenderDimension);
+        targetHeight = Math.round(targetWidth / windowAspect);
+    } else { // Window is taller than wide (or square)
+        // Limit height to maxRenderDimension, scale width proportionally
+        targetHeight = Math.min(targetHeight, maxRenderDimension);
+        targetWidth = Math.round(targetHeight * windowAspect);
+    }
+
+    // Set internal rendering resolution
+    gl.canvas.width = targetWidth;
+    gl.canvas.height = targetHeight;
+
+    // Use the entire rendering buffer as the viewport
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+    // Pass the rendering buffer's aspect ratio to the shader
+    gl.uniform1f(loc.aspect, gl.canvas.width / gl.canvas.height);
+
+    // The canvas CSS (width: 100%; height: 100%;) makes it fill the display area.
+    // Since the rendering buffer now has the same aspect ratio as the window,
+    // the content will fill the screen without distortion.
+}
+window.addEventListener('resize',resize);resize(); // Initial call
 
 // ------------------- micro-task based tick loop ---------------------------
 let frameCnt=0,lastFpsTime=performance.now();let lastTime=performance.now();
 const {port1,port2}=new MessageChannel();
-port1.onmessage=render;
-function render(){const now=performance.now();const dt=now-lastTime;lastTime=now;if(!dragging){yaw+=AUTO_SPEED*dt;}updateCamera();gl.drawArrays(gl.TRIANGLES,0,6);frameCnt++;if(now-lastFpsTime>=1000){fpsElem.textContent=(frameCnt*1000/(now-lastFpsTime)).toFixed(1)+' FPS';frameCnt=0;lastFpsTime=now;}port2.postMessage(0);} // schedule next immediately
-port2.postMessage(0); // kick-off
+
+// Conditional scheduling based on useVSync
+port1.onmessage = () => { if (!useVSync) render(); };
+
+function render(){const now=performance.now();const dt=now-lastTime;lastTime=now;if(!dragging){yaw+=AUTO_SPEED*dt;}updateCamera();gl.drawArrays(gl.TRIANGLES,0,6);frameCnt++;if(now-lastFpsTime>=1000){fpsElem.textContent=(frameCnt*1000/(now-lastFpsTime)).toFixed(1)+' FPS';frameCnt=0;lastFpsTime=now;}
+// Schedule next frame based on useVSync
+if (useVSync) {
+    window.requestAnimationFrame(render);
+} else {
+    port2.postMessage(0);
+}
+} // schedule next immediately
+
+// Initial kick-off based on useVSync
+if (useVSync) {
+    window.requestAnimationFrame(render);
+} else {
+    port2.postMessage(0);
+}
 </script>
 </body>
 </html>
