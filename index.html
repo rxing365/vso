@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <title>Mandelbulb</title>
+<meta name="description" content="A WebGL2 Mandelbulb GPU benchmark to test your graphics card performance.">
+<meta name="keywords" content="Mandelbulb, GPU, benchmark, WebGL2, 毒蘑菇, 毒蘑菇测试, 性能测试, performance, rendering">
 <style>
  html,body{margin:0;padding:0;height:100%;background:#111;overflow:hidden;font-family:monospace;}
  canvas{display:block; width: 100%; height: 100%; touch-action: none; }
@@ -62,17 +64,58 @@ let useVSync = true;
 // Max dimension for rendering resolution (longer side)
 let maxRenderDimension = 2048;
 
-// Get the select element and add event listener
-const vsyncSelect = document.getElementById('vsync-select');
-vsyncSelect.addEventListener('change', (event) => {
-    useVSync = event.target.value === 'true';
-    // Restart the rendering loop with the new VSync setting
+// Timeout delay in milliseconds when VSync is disabled (set to 0 for immediate, higher values for more stability)
+let nonVSyncTimeoutDelay = 10; // Default to 10 for safety
+
+// Variables for performance monitoring and delay adjustment
+const frameTimeThreshold = 50; // ms - Threshold for detecting a significant lag in responsiveness (e.g., 50ms)
+const adjustmentInterval = 3000; // Check and adjust every 3 seconds (using requestAnimationFrame)
+let lastMonitorTimestamp = performance.now();
+let lagDetected = false;
+let performanceTimer = 0;
+
+// Variable to track if the next frame has been scheduled
+let isSchedulingNextFrame = false;
+
+// Function to start the rendering loop
+function startRenderingLoop() {
+    if (isSchedulingNextFrame) {
+        return; // Already scheduled
+    }
+    isSchedulingNextFrame = true;
+
     if (useVSync) {
         window.requestAnimationFrame(render);
     } else {
-        // Use setTimeout(0) for non-VSync
-        setTimeout(render, 0);
+        setTimeout(render, nonVSyncTimeoutDelay);
     }
+}
+
+// Function to stop the current rendering loop scheduling
+function stopRenderingLoop() {
+    if (isSchedulingNextFrame) {
+        // Note: Cannot truly cancel requestAnimationFrame once requested,
+        // but we can prevent render from rescheduling itself.
+        isSchedulingNextFrame = false;
+        // For setTimeout, this would ideally clear the timeout,
+        // but the logic in render's end handles not rescheduling.
+    }
+}
+
+// Get the select element and add event listener
+const vsyncSelect = document.getElementById('vsync-select');
+
+// Set initial useVSync state based on the dropdown value on page load
+useVSync = vsyncSelect.value === 'true';
+
+vsyncSelect.addEventListener('change', (event) => {
+    // Stop the current loop before changing the setting
+    stopRenderingLoop();
+
+    useVSync = event.target.value === 'true';
+    
+    // Start the new loop based on the updated setting
+    startRenderingLoop();
 });
 
 // Get the resolution select element and add event listener
@@ -202,10 +245,10 @@ let vsyncFrameCount = 0; // Frame counter for both modes
 const {port1,port2}=new MessageChannel();
 
 // Conditional scheduling based on useVSync
-port1.onmessage = () => { if (!useVSync) render(); };
+port1.onmessage = () => { /* Removed/No longer needed */ };
 
 function render(){
-    // const frameStartTime = performance.now(); // Removed
+    isSchedulingNextFrame = false; // Reset scheduling flag at the start of render
 
     // Increment frame counter (counts render calls in both modes)
     vsyncFrameCount++;
@@ -220,12 +263,6 @@ function render(){
 
     gl.finish(); // Wait for GPU to finish
 
-    // const frameEndTime = performance.now(); // Removed
-    // const frameDuration = frameEndTime - frameStartTime; // Removed
-
-    // totalFrameTime += frameDuration; // Removed
-    // completedFrames++; // Removed
-
     // Update FPS display approximately every second
     const currentTime = performance.now();
     if(currentTime - lastFpsUpdateTime >= 1000){
@@ -238,20 +275,55 @@ function render(){
         lastFpsUpdateTime = currentTime;
     }
 
-    // Schedule next frame based on useVSync
-    if (useVSync) {
-        window.requestAnimationFrame(render);
-    } else {
-        setTimeout(render, 0); // Use setTimeout(0) for non-VSync
-    }
+    // Schedule next frame using the new start function
+    startRenderingLoop();
 }
 
-// Initial kick-off based on useVSync
-if (useVSync) {
-    window.requestAnimationFrame(render);
-} else {
-    setTimeout(render, 0); // Use setTimeout(0) for initial kick-off
+// Initial kick-off using the new start function
+startRenderingLoop(); // Start the initial rendering loop
+requestAnimationFrame(adjustTimeoutDelay); // Start the responsiveness monitoring loop separately
+
+// Function to dynamically adjust the nonVSyncTimeoutDelay based on responsiveness monitoring
+function adjustTimeoutDelay() {
+    const now = performance.now();
+    const delta = now - lastMonitorTimestamp;
+    lastMonitorTimestamp = now;
+
+    // Accumulate time to check adjustment interval
+    performanceTimer += delta;
+
+    // Detect significant lag (e.g., if rAF delta is much larger than expected, e.g., > 50ms)
+    if (delta > frameTimeThreshold) {
+        console.warn(`Lag detected! rAF delta: ${delta.toFixed(2)}ms`);
+        lagDetected = true;
+    }
+
+    // Check and adjust delay periodically
+    if (performanceTimer >= adjustmentInterval) {
+        performanceTimer = 0; // Reset timer
+
+        console.log(`Monitoring check. Current delay: ${nonVSyncTimeoutDelay}ms. Lag detected in last interval: ${lagDetected}`);
+
+        if (lagDetected) {
+            // Lag was detected in the last interval, try increasing delay (max 10ms)
+            if (nonVSyncTimeoutDelay < 10) {
+                nonVSyncTimeoutDelay++;
+                console.log(`Lag detected, increasing delay to ${nonVSyncTimeoutDelay}ms`);
+            }
+            lagDetected = false; // Reset lag flag for the next interval
+        } else {
+            // No lag detected in the last interval, try reducing delay (min 1ms), only when VSync is off
+            if (!useVSync && nonVSyncTimeoutDelay > 1) {
+                 nonVSyncTimeoutDelay--;
+                 console.log(`No lag detected, reducing delay to ${nonVSyncTimeoutDelay}ms`);
+            }
+        }
+    }
+
+    // Schedule the next monitoring check using requestAnimationFrame
+    requestAnimationFrame(adjustTimeoutDelay);
 }
 </script>
+<!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "594fe604ced84f1ebd8d496d73b37429"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
