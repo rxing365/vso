@@ -65,14 +65,14 @@ let useVSync = true;
 let maxRenderDimension = 2048;
 
 // Timeout delay in milliseconds when VSync is disabled (set to 0 for immediate, higher values for more stability)
-let nonVSyncTimeoutDelay = 0; // Default to 10 for safety
+// let nonVSyncTimeoutDelay = 0; // Default to 10 for safety
 
 // Variables for performance monitoring and delay adjustment
-const frameTimeThreshold = 50; // ms - Threshold for detecting a significant lag in responsiveness (e.g., 50ms)
-const adjustmentInterval = 3000; // Check and adjust every 3 seconds (using requestAnimationFrame)
-let lastMonitorTimestamp = performance.now();
-let lagDetected = false;
-let performanceTimer = 0;
+// const frameTimeThreshold = 50; // ms - Threshold for detecting a significant lag in responsiveness (e.g., 50ms)
+// const adjustmentInterval = 3000; // Check and adjust every 3 seconds (using requestAnimationFrame)
+// let lastMonitorTimestamp = performance.now();
+// let lagDetected = false;
+// let performanceTimer = 0;
 
 // Variable to track if the next frame has been scheduled
 let isSchedulingNextFrame = false;
@@ -87,7 +87,8 @@ function startRenderingLoop() {
     if (useVSync) {
         window.requestAnimationFrame(render);
     } else {
-        setTimeout(render, nonVSyncTimeoutDelay);
+        // Use setTimeout with 0 delay when VSync is off, removing dynamic delay adjustment
+        setTimeout(render, 0);
     }
 }
 
@@ -245,7 +246,7 @@ let vsyncFrameCount = 0; // Frame counter for both modes
 const {port1,port2}=new MessageChannel();
 
 // Conditional scheduling based on useVSync
-port1.onmessage = () => { /* Removed/No longer needed */ };
+// port1.onmessage = () => { /* Removed/No longer needed */ };
 
 function render(){
     isSchedulingNextFrame = false; // Reset scheduling flag at the start of render
@@ -281,9 +282,10 @@ function render(){
 
 // Initial kick-off using the new start function
 startRenderingLoop(); // Start the initial rendering loop
-requestAnimationFrame(adjustTimeoutDelay); // Start the responsiveness monitoring loop separately
+// requestAnimationFrame(adjustTimeoutDelay); // Start the responsiveness monitoring loop separately
 
 // Function to dynamically adjust the nonVSyncTimeoutDelay based on responsiveness monitoring
+/*
 function adjustTimeoutDelay() {
     const now = performance.now();
     const delta = now - lastMonitorTimestamp;
@@ -323,6 +325,7 @@ function adjustTimeoutDelay() {
     // Schedule the next monitoring check using requestAnimationFrame
     requestAnimationFrame(adjustTimeoutDelay);
 }
+*/
 </script>
 <!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "594fe604ced84f1ebd8d496d73b37429"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
